@@ -459,7 +459,7 @@ require_once("config.php");
             'topic' => $topic,
           ];
           if ($bot) {
-            $this->bot->access_token = "xoxb-99283207175-oHaa6FnqcUDdJJN6SlfdVqKv";
+            $this->bot->access_token = "$cfg->bot_token";
             $bot = TRUE;
           } else {
             $bot = FALSE;
