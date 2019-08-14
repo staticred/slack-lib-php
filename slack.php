@@ -1,6 +1,24 @@
 <?php
 
-require_once("config.php");
+          /*
+           * The $cfg object used throughout this class is stored in a separate 
+           * configuration file, which contains the following:
+           * 
+           * $cfg->db_host = "localhost";
+           * $cfg->db_name = "database";
+           * $cfg->db_user = "db_username";
+           * $cfg->db_password = "123456";
+           * $cfg->enctype = "sha256";
+           * $cfg->salt = "asdfasdfasdfasdf";
+           * $cfg->app_webhook = "https://api.slack.com/....."; // Optional
+           * $cfg->oauth_token = "..."; // Standalone Slack OAuth token (non-distributed app)
+           * $cfg->apiurl = "..."; Slack API URL
+           * $cfg->oauthurl = "..."; Slack Oauth endpoint
+           * $cfg->client_id = "..."; Slack app Client ID
+           * $cfg->client_secret = "..." Slack API Secret
+           * $cfg->botname = "..."; The name of your bot. 
+           */
+
 
     class SlackAPI {
 
@@ -141,6 +159,8 @@ require_once("config.php");
           *
           */
         public function load_token() {
+          
+           
           global $cfg;
 
           $db = new PDO("mysql:host={$cfg->db_host};dbname={$cfg->db_name}", $cfg->db_user, $cfg->db_password);
@@ -150,6 +170,7 @@ require_once("config.php");
 
           if (isset($cfg->oauth_token)) {
             $this->access_token = $cfg->oauth_token;
+            $this->webhookurl = $cfg->app_webhook;
             return TRUE;
           }
 
@@ -162,6 +183,7 @@ require_once("config.php");
             $this->app_id = $token[0]['app_id'];
             $this->app_user_id = $token[0]['app_user_id'];
             $this->installer_user_id = $token[0]['installer_user_id'];
+            $this->webhookurl = isset($token[0]['webhook_url']) ? $token[0]['webhook_url'] : $cfg->app_webhook;
             
             return TRUE;            
           }
@@ -194,36 +216,42 @@ require_once("config.php");
             'app_user_id' => $this->app_user_id,
             'installer_user_id' => $this->installer_user_id,
             'oauth_token' => openssl_encrypt($this->access_token, $cfg->enctype, $cfg->salt, $cfg->salt),
+            'webhook_url' => $this->webhook->url,
           ];
+          
+          error_log(json_encode($record));
 
 
           $tokenstore = $this->load_token();
           if ($this->access_token <> "") {
             $encrypted_token = openssl_encrypt($this->access_token, $cfg->enctype, $cfg->salt, $cfg->salt);
-            $stmt = $db->prepare("UPDATE tokenstore SET teamid = ?, app_id = ?, app_user_id = ?, installer_user_id = ?, oauth_token = ? WHERE teamid = ? AND installer_user_id = ?");
+            $stmt = $db->prepare("UPDATE tokenstore SET teamid = ?, app_id = ?, app_user_id = ?, installer_user_id = ?, oauth_token = ?, webhook_url = ? WHERE teamid = ? AND installer_user_id = ?");
             $stmt->bindParam(1, $this->teamid);
             $stmt->bindParam(2, $this->result['app_id']);
             $stmt->bindParam(3, $this->result['app_user_id']);
             $stmt->bindParam(4, $this->result['installer_user_id']);
             $stmt->bindParam(5, $encrypted_token);
-            $stmt->bindParam(6, $this->teamid);
-            $stmt->bindParam(7, $this->userid);
+            $stmt->bindParam(6, $this->result['webhook_url']);
+            $stmt->bindParam(7, $this->teamid);
+            $stmt->bindParam(8, $this->userid);
           } else {
   
             $encrypted_token = openssl_encrypt($this->result['access_token'], $cfg->enctype, $cfg->salt, $cfg->salt);
-            $stmt = $db->prepare("INSERT INTO tokenstore SET teamid = ?, app_id = ?, app_user_id = ?, installer_user_id = ?, oauth_token = ?");
+            $stmt = $db->prepare("INSERT INTO tokenstore SET teamid = ?, app_id = ?, app_user_id = ?, installer_user_id = ?, oauth_token = ?, webhook_url = ?");
             $stmt->bindParam(1, $record['teamid']);
             $stmt->bindParam(2, $record['app_id']);
             $stmt->bindParam(3, $record['app_user_id']);
             $stmt->bindParam(4, $record['installer_user_id']);
             $stmt->bindParam(5, $encrypted_token);
+            $stmt->bindParam(6, $record['webhook_url']);
 
           }
           
           if ($stmt->execute()) {
+            error_log("Statement executed.");
             return TRUE;
           } else {
-            print_r($stmt->errorInfo());
+            error_log(json_encode($stmt->errorInfo()));
           }
 
             return FALSE;
@@ -459,7 +487,7 @@ require_once("config.php");
             'topic' => $topic,
           ];
           if ($bot) {
-            $this->bot->access_token = "$cfg->bot_token";
+            $this->bot->access_token = "xoxb-99283207175-oHaa6FnqcUDdJJN6SlfdVqKv";
             $bot = TRUE;
           } else {
             $bot = FALSE;
@@ -790,13 +818,13 @@ require_once("config.php");
         global $cfg;
 
         if (!isset($this->webhookurl) or empty($this->webhookurl)) {
+          error_log("Webhook URL is empty");
           return false;
         }
 
         $json = json_encode($payload);
-
     		$curl = curl_init($this->webhookurl);
-    		curl_setopt($curl, CURLOPT_HEADER, false);
+    		curl_setopt($curl, CURLOPT_HEADER, TRUE);
     		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
     		curl_setopt($curl, CURLOPT_HTTPHEADER,
           array("Content-type: application/json"));
